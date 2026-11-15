@@ -1,0 +1,17 @@
+{
+  "schemaVersion": 1,
+  "id": "donut-addon",
+  "version": "${version}",
+  "name": "Donut Addon",
+  "description": "Sus chunk finder, base signal and spawner beam for Meteor Client.",
+  "authors": ["you"],
+  "environment": "client",
+  "entrypoints": {
+    "meteor": ["com.example.addon.AddonTemplate"]
+  },
+  "depends": {
+    "java": ">=21",
+    "minecraft": "*",
+    "meteor-client": "*"
+  }
+}
