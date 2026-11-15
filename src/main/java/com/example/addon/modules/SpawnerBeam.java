@@ -11,7 +11,7 @@ import meteordevelopment.orbit.EventHandler;
 import net.minecraft.block.entity.BlockEntity;
 import net.minecraft.block.entity.MobSpawnerBlockEntity;
 import net.minecraft.util.math.BlockPos;
-import net.minecraft.world.chunk.Chunk;
+import net.minecraft.world.chunk.WorldChunk;
 
 import java.util.*;
 
@@ -51,7 +51,7 @@ public class SpawnerBeam extends Module {
         int cx = mc.player.getChunkPos().x, cz = mc.player.getChunkPos().z;
         for (int x = cx - vd; x <= cx + vd; x++) {
             for (int z = cz - vd; z <= cz + vd; z++) {
-                Chunk chunk = mc.world.getChunk(x, z, net.minecraft.world.chunk.ChunkStatus.FULL, false);
+                WorldChunk chunk = mc.world.getChunkManager().getWorldChunk(x, z);
                 if (chunk == null) continue;
                 for (BlockEntity be : chunk.getBlockEntities().values()) {
                     if (be instanceof MobSpawnerBlockEntity) found.add(be.getPos());

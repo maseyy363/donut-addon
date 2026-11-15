@@ -10,7 +10,7 @@ import meteordevelopment.meteorclient.utils.render.color.SettingColor;
 import meteordevelopment.orbit.EventHandler;
 import net.minecraft.block.entity.*;
 import net.minecraft.util.math.ChunkPos;
-import net.minecraft.world.chunk.Chunk;
+import net.minecraft.world.chunk.WorldChunk;
 
 import java.util.*;
 
@@ -63,7 +63,7 @@ public class SusChunkFinder extends Module {
 
         for (int x = cx - viewDist; x <= cx + viewDist; x++) {
             for (int z = cz - viewDist; z <= cz + viewDist; z++) {
-                Chunk chunk = mc.world.getChunk(x, z, net.minecraft.world.chunk.ChunkStatus.FULL, false);
+                WorldChunk chunk = mc.world.getChunkManager().getWorldChunk(x, z);
                 if (chunk == null) continue;
                 int count = 0;
                 for (BlockEntity be : chunk.getBlockEntities().values()) {
