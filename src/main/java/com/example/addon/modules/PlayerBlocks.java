@@ -6,11 +6,11 @@ import net.minecraft.block.entity.*;
 
 import java.util.Set;
 
-/** Shared helpers: what counts as "player-made" or "storage". */
+/** Shared helpers: what counts as "player-made" and how much each storage block is worth. */
 public final class PlayerBlocks {
     private PlayerBlocks() {}
 
-    /** Blocks that basically never generate naturally in bulk. */
+    /** Blocks that basically never generate naturally in bulk underground. */
     public static final Set<Block> PLAYER_MADE = Set.of(
         Blocks.CRAFTING_TABLE, Blocks.GLASS, Blocks.GLASS_PANE, Blocks.TINTED_GLASS,
         Blocks.BEACON, Blocks.ENCHANTING_TABLE, Blocks.ANVIL, Blocks.TNT, Blocks.HOPPER,
@@ -21,12 +21,24 @@ public final class PlayerBlocks {
         Blocks.FURNACE, Blocks.BLAST_FURNACE, Blocks.SMOKER, Blocks.LANTERN
     );
 
-    public static boolean isStorage(BlockEntity be) {
-        return be instanceof ChestBlockEntity || be instanceof BarrelBlockEntity
-            || be instanceof ShulkerBoxBlockEntity || be instanceof FurnaceBlockEntity
-            || be instanceof BlastFurnaceBlockEntity || be instanceof SmokerBlockEntity
-            || be instanceof HopperBlockEntity || be instanceof BedBlockEntity
-            || be instanceof EnderChestBlockEntity || be instanceof DispenserBlockEntity
-            || be instanceof CrafterBlockEntity;
+    /**
+     * Points per storage block. Plain chests are worth very little because natural
+     * structures (dungeons, temples, bastions, ancient cities...) are full of them.
+     * Things that don't generate naturally are worth a lot.
+     */
+    public static double weight(BlockEntity be) {
+        if (be instanceof EnderChestBlockEntity) return 6;
+        if (be instanceof ShulkerBoxBlockEntity) return 4;
+        if (be instanceof HopperBlockEntity) return 3;
+        if (be instanceof CrafterBlockEntity) return 3;
+        if (be instanceof DispenserBlockEntity) return 2;
+        if (be instanceof BarrelBlockEntity) return 1.5;
+        if (be instanceof FurnaceBlockEntity || be instanceof BlastFurnaceBlockEntity
+            || be instanceof SmokerBlockEntity) return 1.5;
+        if (be instanceof ChestBlockEntity) return 1;
+        if (be instanceof BedBlockEntity) return 0.5;
+        return 0;
     }
+
+    public static boolean isStorage(BlockEntity be) { return weight(be) > 0; }
 }

@@ -17,12 +17,15 @@ import net.minecraft.world.chunk.WorldChunk;
 
 import java.util.*;
 
-/** Red beam into the sky above every loaded spawner, plus a top-right toast the first time one is seen. */
+/** Spawner notifier: red sky beam, top-right toast, and a chat line for every newly found spawner. */
 public class SpawnerBeam extends Module {
     private final SettingGroup sg = settings.getDefaultGroup();
 
-    private final Setting<Boolean> notify = sg.add(new BoolSetting.Builder()
+    private final Setting<Boolean> toast = sg.add(new BoolSetting.Builder()
         .name("notification").description("Top-right toast when a new spawner is found.")
+        .defaultValue(true).build());
+    private final Setting<Boolean> chat = sg.add(new BoolSetting.Builder()
+        .name("chat-message").description("Also print the coordinates in chat.")
         .defaultValue(true).build());
     private final Setting<String> message = sg.add(new StringSetting.Builder()
         .name("message").description("Toast title.")
@@ -36,14 +39,14 @@ public class SpawnerBeam extends Module {
     private final Setting<SettingColor> line = sg.add(new ColorSetting.Builder()
         .name("line-color").defaultValue(new SettingColor(255, 0, 0, 255)).build());
     private final Setting<Integer> scanInterval = sg.add(new IntSetting.Builder()
-        .name("scan-interval-ticks").defaultValue(20).min(5).sliderMax(100).build());
+        .name("scan-interval-ticks").defaultValue(10).min(5).sliderMax(100).build());
 
     private final List<BlockPos> spawners = new ArrayList<>();
     private final Set<BlockPos> notified = new HashSet<>();
     private int timer;
 
     public SpawnerBeam() {
-        super(AddonTemplate.CATEGORY, "spawner-beam", "Red beam to the sky above spawners + notification.");
+        super(AddonTemplate.CATEGORY, "spawner-beam", "Red beam + notification for every spawner you come near.");
     }
 
     @Override
@@ -73,14 +76,14 @@ public class SpawnerBeam extends Module {
         spawners.clear();
         spawners.addAll(found);
 
-        if (notify.get()) {
-            for (BlockPos p : found) {
-                if (notified.add(p)) {
-                    SystemToast.add(mc.getToastManager(), SystemToast.Type.PERIODIC_NOTIFICATION,
-                        Text.literal(message.get()),
-                        Text.literal(p.getX() + ", " + p.getY() + ", " + p.getZ()));
-                }
+        for (BlockPos p : found) {
+            if (!notified.add(p)) continue;
+            if (toast.get()) {
+                SystemToast.add(mc.getToastManager(), SystemToast.Type.PERIODIC_NOTIFICATION,
+                    Text.literal(message.get()),
+                    Text.literal(p.getX() + ", " + p.getY() + ", " + p.getZ()));
             }
+            if (chat.get()) info("Spawner found at %d %d %d", p.getX(), p.getY(), p.getZ());
         }
     }
 

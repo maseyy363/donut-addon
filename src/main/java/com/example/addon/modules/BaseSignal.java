@@ -8,37 +8,36 @@ import meteordevelopment.meteorclient.settings.*;
 import meteordevelopment.meteorclient.systems.modules.Module;
 import meteordevelopment.meteorclient.utils.render.color.SettingColor;
 import meteordevelopment.orbit.EventHandler;
-import net.minecraft.block.entity.BlockEntity;
 import net.minecraft.util.math.BlockPos;
-import net.minecraft.world.chunk.ChunkSection;
 import net.minecraft.world.chunk.WorldChunk;
 
 import java.util.*;
 
 /**
- * Cyan beam into the sky above chunks that look like active bases:
- * enough storage blocks AND/OR enough player-made block sections.
+ * Cyan beam into the sky above the strongest underground base candidates.
+ * Uses the same detector as Sus Chunk Finder but stricter by default (fewer, surer hits).
  */
 public class BaseSignal extends Module {
     private final SettingGroup sg = settings.getDefaultGroup();
 
+    private final Setting<Integer> depth = sg.add(new IntSetting.Builder()
+        .name("min-depth-below-surface").defaultValue(6).min(0).sliderMax(40).build());
+    private final Setting<Integer> minScore = sg.add(new IntSetting.Builder()
+        .name("min-score").defaultValue(18).min(1).sliderMax(100).build());
+    private final Setting<Integer> minTypes = sg.add(new IntSetting.Builder()
+        .name("min-storage-types").defaultValue(2).min(1).sliderMax(6).build());
     private final Setting<Integer> minStorage = sg.add(new IntSetting.Builder()
-        .name("min-storage").description("Storage/utility blocks needed in a chunk.")
-        .defaultValue(5).min(0).sliderMax(64).build());
-    private final Setting<Integer> minPlayerSections = sg.add(new IntSetting.Builder()
-        .name("min-player-sections").description("Sections with player-made blocks needed in a chunk.")
-        .defaultValue(2).min(0).sliderMax(20).build());
-    private final Setting<Boolean> requireBoth = sg.add(new BoolSetting.Builder()
-        .name("require-both").description("Need storage AND player blocks (fewer false positives).")
-        .defaultValue(false).build());
+        .name("min-storage-blocks").defaultValue(4).min(0).sliderMax(50).build());
+    private final Setting<Integer> sectionWeight = sg.add(new IntSetting.Builder()
+        .name("player-section-weight").defaultValue(2).min(0).sliderMax(10).build());
     private final Setting<Integer> beamTop = sg.add(new IntSetting.Builder()
         .name("beam-top-y").defaultValue(320).sliderRange(64, 400).build());
     private final Setting<Double> width = sg.add(new DoubleSetting.Builder()
         .name("beam-width").defaultValue(0.4).min(0.05).sliderMax(1).build());
     private final Setting<Integer> scanInterval = sg.add(new IntSetting.Builder()
-        .name("scan-interval-ticks").defaultValue(40).min(10).sliderMax(200).build());
+        .name("scan-interval-ticks").defaultValue(30).min(10).sliderMax(200).build());
     private final Setting<SettingColor> side = sg.add(new ColorSetting.Builder()
-        .name("side-color").defaultValue(new SettingColor(0, 200, 255, 60)).build());
+        .name("side-color").defaultValue(new SettingColor(0, 200, 255, 70)).build());
     private final Setting<SettingColor> line = sg.add(new ColorSetting.Builder()
         .name("line-color").defaultValue(new SettingColor(0, 200, 255, 255)).build());
 
@@ -46,7 +45,7 @@ public class BaseSignal extends Module {
     private int timer;
 
     public BaseSignal() {
-        super(AddonTemplate.CATEGORY, "base-signal", "Cyan beam in the sky over likely bases.");
+        super(AddonTemplate.CATEGORY, "base-signal", "Cyan beam in the sky over likely underground bases.");
     }
 
     @Override
@@ -66,30 +65,10 @@ public class BaseSignal extends Module {
             for (int z = cz - vd; z <= cz + vd; z++) {
                 WorldChunk chunk = mc.world.getChunkManager().getWorldChunk(x, z);
                 if (chunk == null) continue;
-
-                int n = 0;
-                long sx = 0, sy = 0, sz = 0;
-                for (BlockEntity be : chunk.getBlockEntities().values()) {
-                    if (PlayerBlocks.isStorage(be)) {
-                        n++;
-                        BlockPos p = be.getPos();
-                        sx += p.getX(); sy += p.getY(); sz += p.getZ();
-                    }
+                BaseDetector.Result r = BaseDetector.analyze(chunk, depth.get(), sectionWeight.get());
+                if (r.score >= minScore.get() && r.types >= minTypes.get() && r.storage >= minStorage.get()) {
+                    found.add(r.center);
                 }
-                int sections = 0;
-                for (ChunkSection s : chunk.getSectionArray()) {
-                    if (s != null && !s.isEmpty() && s.hasAny(st -> PlayerBlocks.PLAYER_MADE.contains(st.getBlock()))) sections++;
-                }
-
-                boolean storageOk = n >= minStorage.get() && n > 0;
-                boolean playerOk = sections >= minPlayerSections.get() && sections > 0;
-                boolean hit = requireBoth.get() ? (storageOk && playerOk) : (storageOk || playerOk);
-                if (!hit) continue;
-
-                BlockPos pos = n > 0
-                    ? new BlockPos((int) (sx / n), (int) (sy / n), (int) (sz / n))
-                    : new BlockPos(chunk.getPos().getCenterX(), 64, chunk.getPos().getCenterZ());
-                found.add(pos);
             }
         }
         bases.clear();
