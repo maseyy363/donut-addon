@@ -64,7 +64,7 @@ public class SusChunkFinder extends Module {
     private int timer;
 
     public SusChunkFinder() {
-        super(AddonTemplate.CATEGORY, "chunk-finder", "Chunk finder: underground bases by storage weight + player blocks.");
+        super(AddonTemplate.CATEGORY, "donut-chunk-finder", "Chunk finder: underground bases by storage weight + player blocks.");
     }
 
     @Override

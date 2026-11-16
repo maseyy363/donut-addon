@@ -36,7 +36,7 @@ public class AutoRelog extends Module {
     private boolean triggered;
 
     public AutoRelog() {
-        super(AddonTemplate.CATEGORY, "auto-relog", "Relogs when health or Y level hits your limit.");
+        super(AddonTemplate.CATEGORY, "donut-auto-relog", "Relogs when health or Y level hits your limit.");
     }
 
     @Override
