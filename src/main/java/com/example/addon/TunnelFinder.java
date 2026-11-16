@@ -155,7 +155,7 @@ public final class TunnelFinder {
         if (chunk == null) return null;
 
         int minY = Math.max(world.getBottomY() + 1, -63);
-        nt maxY = Math.min(world.getBottomY() + world.getHeight() - 3, 120);
+        int maxY = Math.min(world.getBottomY() + world.getHeight() - 3, 120);
         Result res = new Result();
         if (maxY <= minY) return res;
 
