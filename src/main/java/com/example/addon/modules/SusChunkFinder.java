@@ -46,8 +46,6 @@ public class SusChunkFinder extends Module {
 
     private final Setting<Boolean> notify = sgRender.add(new BoolSetting.Builder()
         .name("notification").description("Top-right toast when a new sus chunk is found.").defaultValue(true).build());
-    private final Setting<Boolean> pillar = sgRender.add(new BoolSetting.Builder()
-        .name("sky-pillar").description("Beam into the sky above sus chunks.").defaultValue(true).build());
     private final Setting<Integer> yMin = sgRender.add(new IntSetting.Builder()
         .name("box-min-y").defaultValue(-64).sliderRange(-64, 320).build());
     private final Setting<Integer> yMax = sgRender.add(new IntSetting.Builder()
@@ -66,11 +64,11 @@ public class SusChunkFinder extends Module {
     private int timer;
 
     public SusChunkFinder() {
-        super(AddonTemplate.CATEGORY, "sus-chunk-finder", "Finds underground bases by storage weight + player blocks.");
+        super(AddonTemplate.CATEGORY, "chunk-finder", "Chunk finder: underground bases by storage weight + player blocks.");
     }
 
     @Override
-    public void onActivate() { notified.clear(); }
+    public void onActivate() { notified.clear(); timer = scanInterval.get(); }
 
     @Override
     public void onDeactivate() { sus.clear(); }
@@ -126,12 +124,6 @@ public class SusChunkFinder extends Module {
                 p.getStartX() + 16, yMax.get(), p.getStartZ() + 16,
                 side, line, shapeMode.get(), 0);
 
-            if (pillar.get()) {
-                BlockPos c = e.getValue().center;
-                event.renderer.box(c.getX() + 0.35, c.getY(), c.getZ() + 0.35,
-                    c.getX() + 0.65, 320, c.getZ() + 0.65,
-                    new SettingColor(r, g, bl, 90), line, ShapeMode.Both, 0);
-            }
         }
     }
 

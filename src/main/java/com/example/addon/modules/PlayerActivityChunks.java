@@ -43,6 +43,9 @@ public class PlayerActivityChunks extends Module {
     }
 
     @Override
+    public void onActivate() { timer = scanInterval.get(); }
+
+    @Override
     public void onDeactivate() { active.clear(); }
 
     @EventHandler

@@ -50,7 +50,7 @@ public class SpawnerBeam extends Module {
     }
 
     @Override
-    public void onActivate() { notified.clear(); }
+    public void onActivate() { notified.clear(); timer = scanInterval.get(); }
 
     @Override
     public void onDeactivate() { spawners.clear(); }

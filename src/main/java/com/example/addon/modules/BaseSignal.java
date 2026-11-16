@@ -49,6 +49,9 @@ public class BaseSignal extends Module {
     }
 
     @Override
+    public void onActivate() { timer = scanInterval.get(); }
+
+    @Override
     public void onDeactivate() { bases.clear(); }
 
     @EventHandler
