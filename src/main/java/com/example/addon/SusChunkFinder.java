@@ -12,23 +12,29 @@ import net.minecraft.client.toast.SystemToast;
 import net.minecraft.text.Text;
 import net.minecraft.util.math.BlockPos;
 import net.minecraft.util.math.ChunkPos;
+import net.minecraft.util.math.Vec3d;
 
 import java.util.*;
 
 /**
- * Finds likely underground bases. Looks at each chunk together with its neighbours, so bases that
- * straddle chunk borders are found and each base shows up once. Shows a confidence rating
- * (LOW / MEDIUM / HIGH) in the notification.
+ * Finds likely bases. Looks at each chunk together with its neighbours (bases that straddle chunk
+ * borders are found, each base shows once), counts player-dug tunnels as extra evidence, and shows a
+ * confidence rating (LOW / MEDIUM / HIGH) in the notification.
  */
 public class SusChunkFinder extends Module {
     public enum Style { Full, Corners, Floor }
 
+    private static final int TUNNEL_MIN_RUN = 8;
+
     private final SettingGroup sg = settings.getDefaultGroup();
     private final SettingGroup sgRender = settings.createGroup("Render");
 
+    private final Setting<Boolean> undergroundOnly = sg.add(new BoolSetting.Builder()
+        .name("underground-only").description("Only count storage below the surface. Turn off to also find bases above ground.")
+        .defaultValue(true).build());
     private final Setting<Integer> depth = sg.add(new IntSetting.Builder()
         .name("min-depth-below-surface").description("Storage must be this many blocks under the surface to count.")
-        .defaultValue(6).min(0).sliderMax(40).build());
+        .defaultValue(6).min(0).sliderMax(40).visible(undergroundOnly::get).build());
     private final Setting<Integer> minScore = sg.add(new IntSetting.Builder()
         .name("min-score").description("Score (chunk + neighbours) needed. Plain chest = 1, shulker = 4, ender chest = 6, beacon = 8.")
         .defaultValue(12).min(1).sliderMax(100).build());
@@ -36,18 +42,29 @@ public class SusChunkFinder extends Module {
         .name("min-storage-types").description("Different kinds of storage needed (chest, barrel, hopper...). Blocks lone natural chests.")
         .defaultValue(2).min(1).sliderMax(6).build());
     private final Setting<Integer> minStorage = sg.add(new IntSetting.Builder()
-        .name("min-storage-blocks").description("Minimum underground storage blocks (chunk + neighbours).")
+        .name("min-storage-blocks").description("Minimum storage blocks (chunk + neighbours).")
         .defaultValue(3).min(0).sliderMax(50).build());
     private final Setting<Integer> sectionWeight = sg.add(new IntSetting.Builder()
         .name("player-section-weight").defaultValue(2).min(0).sliderMax(10).build());
+    private final Setting<Boolean> useTunnels = sg.add(new BoolSetting.Builder()
+        .name("use-tunnels").description("Count player-dug tunnels and shafts as base evidence.")
+        .defaultValue(true).build());
+    private final Setting<Double> tunnelWeight = sg.add(new DoubleSetting.Builder()
+        .name("tunnel-weight").description("Score per tunnel block (capped at 12 per chunk).")
+        .defaultValue(0.3).min(0).max(2).sliderMax(2).visible(useTunnels::get).build());
     private final Setting<Integer> highScore = sg.add(new IntSetting.Builder()
         .name("high-score").description("Score at which the chunk turns fully red.")
         .defaultValue(35).min(2).sliderMax(200).build());
+    private final Setting<Integer> maxMarkers = sg.add(new IntSetting.Builder()
+        .name("max-markers").description("Show only the nearest this many bases (keeps the screen clean).")
+        .defaultValue(25).min(1).sliderMax(100).build());
     private final Setting<Integer> scanInterval = sg.add(new IntSetting.Builder()
         .name("scan-interval-ticks").defaultValue(30).min(10).sliderMax(200).build());
 
     private final Setting<Boolean> notify = sgRender.add(new BoolSetting.Builder()
         .name("notification").description("Top-right toast when a new base is found.").defaultValue(true).build());
+    private final Setting<Boolean> tracers = sgRender.add(new BoolSetting.Builder()
+        .name("tracers").description("Line from your crosshair to each base.").defaultValue(false).build());
     private final Setting<Style> style = sgRender.add(new EnumSetting.Builder<Style>()
         .name("style").description("Full box, corner brackets, or a flat floor marker.")
         .defaultValue(Style.Corners).build());
@@ -71,7 +88,7 @@ public class SusChunkFinder extends Module {
     private int timer;
 
     public SusChunkFinder() {
-        super(AddonTemplate.CATEGORY, "donut-chunk-finder", "Chunk finder: underground bases by storage weight + player blocks.");
+        super(AddonTemplate.CATEGORY, "donut-chunk-finder", "Chunk finder: bases by storage weight, player blocks and tunnels.");
     }
 
     @Override
@@ -80,6 +97,11 @@ public class SusChunkFinder extends Module {
     @Override
     public void onDeactivate() { sus.clear(); }
 
+    private double distSq(ChunkPos p) {
+        double dx = p.getCenterX() - mc.player.getX(), dz = p.getCenterZ() - mc.player.getZ();
+        return dx * dx + dz * dz;
+    }
+
     @EventHandler
     private void onTick(TickEvent.Post event) {
         Safe.run(getClass().getSimpleName(), () -> onTickImpl(event));
@@ -87,18 +109,29 @@ public class SusChunkFinder extends Module {
 
     private void onTickImpl(TickEvent.Post event) {
         if (mc.world == null || mc.player == null) return;
+
+        int cx = mc.player.getChunkPos().x, cz = mc.player.getChunkPos().z;
+        int vd = mc.options.getViewDistance().getValue();
+        if (useTunnels.get()) TunnelFinder.tick(mc.world, cx, cz, vd, 1, 60 * 20);
+
         if (++timer < scanInterval.get()) return;
         timer = 0;
 
         Map<ChunkPos, BaseDetector.Result> found = BaseDetector.findBases(
-            mc.world, mc.player.getChunkPos().x, mc.player.getChunkPos().z,
-            mc.options.getViewDistance().getValue(), depth.get(), sectionWeight.get(),
-            minScore.get(), minTypes.get(), minStorage.get());
+            mc.world, cx, cz, vd, undergroundOnly.get() ? depth.get() : -4096, sectionWeight.get(),
+            minScore.get(), minTypes.get(), minStorage.get(),
+            useTunnels.get() ? tunnelWeight.get() : 0, TUNNEL_MIN_RUN);
+
+        // Keep only the nearest bases.
+        List<Map.Entry<ChunkPos, BaseDetector.Result>> list = new ArrayList<>(found.entrySet());
+        list.sort(Comparator.comparingDouble((Map.Entry<ChunkPos, BaseDetector.Result> e) -> distSq(e.getKey())));
         sus.clear();
-        sus.putAll(found);
+        for (int i = 0; i < Math.min(list.size(), maxMarkers.get()); i++) {
+            sus.put(list.get(i).getKey(), list.get(i).getValue());
+        }
 
         if (notify.get()) {
-            for (Map.Entry<ChunkPos, BaseDetector.Result> e : found.entrySet()) {
+            for (Map.Entry<ChunkPos, BaseDetector.Result> e : sus.entrySet()) {
                 if (!notified.add(e.getKey())) continue;
                 BaseDetector.Result r = e.getValue();
                 BlockPos c = r.center;
@@ -117,6 +150,14 @@ public class SusChunkFinder extends Module {
     }
 
     private void onRenderImpl(Render3DEvent event) {
+        if (mc.player == null) return;
+
+        Vec3d eye = mc.player.getEyePos();
+        double yaw = Math.toRadians(mc.player.getYaw()), pitch = Math.toRadians(mc.player.getPitch());
+        double tx = eye.x - Math.sin(yaw) * Math.cos(pitch);
+        double ty = eye.y - Math.sin(pitch);
+        double tz = eye.z + Math.cos(yaw) * Math.cos(pitch);
+
         for (Map.Entry<ChunkPos, BaseDetector.Result> e : sus.entrySet()) {
             ChunkPos p = e.getKey();
             BaseDetector.Result r = e.getValue();
@@ -139,6 +180,11 @@ public class SusChunkFinder extends Module {
                     double y = r.center.getY();
                     event.renderer.box(x1, y, z1, x2, y + 0.2, z2, side, line, ShapeMode.Both, 0);
                 }
+            }
+
+            if (tracers.get()) {
+                BlockPos c = r.center;
+                event.renderer.line(tx, ty, tz, c.getX() + 0.5, c.getY() + 0.5, c.getZ() + 0.5, line);
             }
         }
     }

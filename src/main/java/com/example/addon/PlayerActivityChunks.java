@@ -17,8 +17,11 @@ import java.util.*;
 public class PlayerActivityChunks extends Module {
     private final SettingGroup sg = settings.getDefaultGroup();
 
+    private final Setting<Boolean> undergroundOnly = sg.add(new BoolSetting.Builder()
+        .name("underground-only").description("Only count player blocks below the surface. Turn off to also find activity above ground.")
+        .defaultValue(true).build());
     private final Setting<Integer> depth = sg.add(new IntSetting.Builder()
-        .name("min-depth-below-surface").defaultValue(6).min(0).sliderMax(40).build());
+        .name("min-depth-below-surface").defaultValue(6).min(0).sliderMax(40).visible(undergroundOnly::get).build());
     private final Setting<Integer> minSections = sg.add(new IntSetting.Builder()
         .name("min-sections").description("Underground sections with player-made blocks needed.")
         .defaultValue(2).min(1).sliderMax(20).build());
@@ -66,7 +69,7 @@ public class PlayerActivityChunks extends Module {
             for (int z = cz - vd; z <= cz + vd; z++) {
                 WorldChunk chunk = mc.world.getChunkManager().getWorldChunk(x, z);
                 if (chunk == null) continue;
-                if (BaseDetector.analyze(chunk, depth.get(), 0).playerSections >= minSections.get()) {
+                if (BaseDetector.analyze(chunk, undergroundOnly.get() ? depth.get() : -4096, 0).playerSections >= minSections.get()) {
                     found.add(chunk.getPos());
                 }
             }

@@ -14,14 +14,19 @@ import net.minecraft.util.math.ChunkPos;
 import java.util.*;
 
 /**
- * Cyan beam into the sky above the strongest underground base candidates.
+ * Cyan beam into the sky above the strongest base candidates.
  * Same cluster-aware detector as Chunk Finder but stricter by default (fewer, surer hits).
  */
 public class BaseSignal extends Module {
+    private static final int TUNNEL_MIN_RUN = 8;
+
     private final SettingGroup sg = settings.getDefaultGroup();
 
+    private final Setting<Boolean> undergroundOnly = sg.add(new BoolSetting.Builder()
+        .name("underground-only").description("Only count storage below the surface. Turn off to also find bases above ground.")
+        .defaultValue(true).build());
     private final Setting<Integer> depth = sg.add(new IntSetting.Builder()
-        .name("min-depth-below-surface").defaultValue(6).min(0).sliderMax(40).build());
+        .name("min-depth-below-surface").defaultValue(6).min(0).sliderMax(40).visible(undergroundOnly::get).build());
     private final Setting<Integer> minScore = sg.add(new IntSetting.Builder()
         .name("min-score").defaultValue(18).min(1).sliderMax(100).build());
     private final Setting<Integer> minTypes = sg.add(new IntSetting.Builder()
@@ -30,6 +35,11 @@ public class BaseSignal extends Module {
         .name("min-storage-blocks").defaultValue(4).min(0).sliderMax(50).build());
     private final Setting<Integer> sectionWeight = sg.add(new IntSetting.Builder()
         .name("player-section-weight").defaultValue(2).min(0).sliderMax(10).build());
+    private final Setting<Boolean> useTunnels = sg.add(new BoolSetting.Builder()
+        .name("use-tunnels").description("Count player-dug tunnels and shafts as base evidence.")
+        .defaultValue(true).build());
+    private final Setting<Double> tunnelWeight = sg.add(new DoubleSetting.Builder()
+        .name("tunnel-weight").defaultValue(0.3).min(0).max(2).sliderMax(2).visible(useTunnels::get).build());
     private final Setting<Integer> beamTop = sg.add(new IntSetting.Builder()
         .name("beam-top-y").defaultValue(320).sliderRange(64, 400).build());
     private final Setting<Double> width = sg.add(new DoubleSetting.Builder()
@@ -47,7 +57,7 @@ public class BaseSignal extends Module {
     private int timer;
 
     public BaseSignal() {
-        super(AddonTemplate.CATEGORY, "base-signal", "Cyan beam in the sky over likely underground bases.");
+        super(AddonTemplate.CATEGORY, "base-signal", "Cyan beam in the sky over likely bases.");
     }
 
     @Override
@@ -63,13 +73,18 @@ public class BaseSignal extends Module {
 
     private void onTickImpl(TickEvent.Post event) {
         if (mc.world == null || mc.player == null) return;
+
+        int cx = mc.player.getChunkPos().x, cz = mc.player.getChunkPos().z;
+        int vd = mc.options.getViewDistance().getValue();
+        if (useTunnels.get()) TunnelFinder.tick(mc.world, cx, cz, vd, 1, 60 * 20);
+
         if (++timer < scanInterval.get()) return;
         timer = 0;
 
         Map<ChunkPos, BaseDetector.Result> found = BaseDetector.findBases(
-            mc.world, mc.player.getChunkPos().x, mc.player.getChunkPos().z,
-            mc.options.getViewDistance().getValue(), depth.get(), sectionWeight.get(),
-            minScore.get(), minTypes.get(), minStorage.get());
+            mc.world, cx, cz, vd, undergroundOnly.get() ? depth.get() : -4096, sectionWeight.get(),
+            minScore.get(), minTypes.get(), minStorage.get(),
+            useTunnels.get() ? tunnelWeight.get() : 0, TUNNEL_MIN_RUN);
 
         bases.clear();
         for (BaseDetector.Result r : found.values()) bases.add(r.center);

@@ -29,6 +29,7 @@ public final class BaseDetector {
         public int storage;
         public int types;
         public int playerSections;
+        public int tunnelBlocks;
         public BlockPos center;
         public final Set<Class<?>> kinds = new HashSet<>();
     }
@@ -42,6 +43,7 @@ public final class BaseDetector {
             if (w <= 0) continue;
             BlockPos p = be.getPos();
             int surface = chunk.sampleHeightmap(Heightmap.Type.WORLD_SURFACE, p.getX(), p.getZ());
+            if (surface <= chunk.getBottomY() + 1) surface = 63; // heightmap missing: assume sea level
             if (p.getY() > surface - depth) continue; // not underground enough
             r.score += w;
             r.storage++;
@@ -51,6 +53,7 @@ public final class BaseDetector {
 
         int cxm = chunk.getPos().getStartX() + 8, czm = chunk.getPos().getStartZ() + 8;
         int surfaceMid = chunk.sampleHeightmap(Heightmap.Type.WORLD_SURFACE, cxm, czm);
+        if (surfaceMid <= chunk.getBottomY() + 1) surfaceMid = 63;
         ChunkSection[] sections = chunk.getSectionArray();
         for (int i = 0; i < sections.length; i++) {
             ChunkSection s = sections[i];
@@ -74,13 +77,19 @@ public final class BaseDetector {
      * and the chunk itself carries a real share of it.
      */
     public static Map<ChunkPos, Result> findBases(ClientWorld world, int cx, int cz, int vd, int depth,
-                                                 int sectionWeight, int minScore, int minTypes, int minStorage) {
+                                                 int sectionWeight, int minScore, int minTypes, int minStorage,
+                                                 double tunnelWeight, int tunnelMinRun) {
         Map<ChunkPos, Result> all = new HashMap<>();
         for (int x = cx - vd; x <= cx + vd; x++) {
             for (int z = cz - vd; z <= cz + vd; z++) {
                 WorldChunk chunk = world.getChunkManager().getWorldChunk(x, z);
                 if (chunk == null) continue;
                 Result r = analyze(chunk, depth, sectionWeight);
+                if (tunnelWeight > 0) {
+                    // Player-dug tunnels / shafts are extra evidence of a base (capped).
+                    r.tunnelBlocks = TunnelFinder.blocks(chunk.getPos(), tunnelMinRun);
+                    r.score += Math.min(12.0, r.tunnelBlocks * tunnelWeight);
+                }
                 if (r.score > 0) all.put(chunk.getPos(), r);
             }
         }
