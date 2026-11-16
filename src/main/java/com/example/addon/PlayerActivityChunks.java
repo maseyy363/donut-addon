@@ -19,7 +19,7 @@ public class PlayerActivityChunks extends Module {
 
     private final Setting<Boolean> undergroundOnly = sg.add(new BoolSetting.Builder()
         .name("underground-only").description("Only count player blocks below the surface. Turn off to also find activity above ground.")
-        .defaultValue(true).build());
+        .defaultValue(false).build());
     private final Setting<Integer> depth = sg.add(new IntSetting.Builder()
         .name("min-depth-below-surface").defaultValue(6).min(0).sliderMax(40).visible(undergroundOnly::get).build());
     private final Setting<Integer> minSections = sg.add(new IntSetting.Builder()
