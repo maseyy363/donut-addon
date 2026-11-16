@@ -30,6 +30,9 @@ public class AutoRelog extends Module {
     private final Setting<Double> delaySeconds = sg.add(new DoubleSetting.Builder()
         .name("delay-seconds").description("Wait this long after the toast before disconnecting.")
         .defaultValue(0.5).min(0).max(10).sliderMax(3).build());
+    private final Setting<Double> cooldownSeconds = sg.add(new DoubleSetting.Builder()
+        .name("cooldown-seconds").description("After a relog, wait this long in-game before it can trigger again (stops relog loops).")
+        .defaultValue(6).min(0).max(60).sliderMax(20).build());
     private final Setting<String> message = sg.add(new StringSetting.Builder()
         .name("message").description("Toast title.").defaultValue("BOMBACLAT RELOGGGG").build());
     private final Setting<String> subtitle = sg.add(new StringSetting.Builder()
@@ -41,23 +44,29 @@ public class AutoRelog extends Module {
     private boolean pending;   // trigger hit, counting down to the disconnect
     private boolean done;      // already disconnected for this trigger
     private int countdown;
+    private int cooldown;      // in-game ticks left before it may trigger again
 
     public AutoRelog() {
         super(AddonTemplate.CATEGORY, "donut-auto-relog", "Relogs (after a short delay) when Y level or health hits your limit.");
     }
 
     @Override
-    public void onActivate() { pending = false; done = false; countdown = 0; }
+    public void onActivate() { pending = false; done = false; countdown = 0; cooldown = 0; }
 
     @EventHandler
     private void onTick(TickEvent.Post event) {
         if (mc.player == null || mc.world == null || mc.getNetworkHandler() == null) return;
+
+        // Cooldown after a relog. These ticks only run while you are in a world, so the
+        // wait is counted from the moment you are back in the game.
+        if (cooldown > 0) { cooldown--; return; }
 
         // Counting down to the disconnect.
         if (pending) {
             if (--countdown <= 0) {
                 pending = false;
                 done = true;
+                cooldown = (int) Math.round(cooldownSeconds.get() * 20);
                 mc.getNetworkHandler().getConnection().disconnect(Text.literal(message.get()));
             }
             return;
