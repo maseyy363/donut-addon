@@ -3,51 +3,61 @@ package com.example.addon.modules;
 import com.example.addon.AddonTemplate;
 import meteordevelopment.meteorclient.events.render.Render3DEvent;
 import meteordevelopment.meteorclient.events.world.TickEvent;
+import meteordevelopment.meteorclient.renderer.ShapeMode;
 import meteordevelopment.meteorclient.settings.*;
 import meteordevelopment.meteorclient.systems.modules.Module;
 import meteordevelopment.meteorclient.utils.render.color.SettingColor;
 import meteordevelopment.orbit.EventHandler;
 import net.minecraft.block.entity.BlockEntity;
 import net.minecraft.block.entity.MobSpawnerBlockEntity;
+import net.minecraft.client.toast.SystemToast;
 import net.minecraft.entity.player.PlayerEntity;
+import net.minecraft.text.Text;
 import net.minecraft.util.math.BlockPos;
 import net.minecraft.world.chunk.WorldChunk;
 
-import java.util.ArrayList;
-import java.util.List;
+import java.util.*;
 
-/**
- * Marks spawners and players with a big X (a cross that always faces you, visible through walls).
- * Only marks what the server has actually sent you: spawners in loaded chunks and players that are
- * loaded around you. Render-only; it does not reveal anything the server is not sending.
- */
 public class CrossEsp extends Module {
     private final SettingGroup sg = settings.getDefaultGroup();
+    private final SettingGroup sgPlayers = settings.createGroup("Players");
 
-    private final Setting<Boolean> spawners = sg.add(new BoolSetting.Builder()
-        .name("spawners").description("Mark spawners with a cross.").defaultValue(true).build());
-    private final Setting<Boolean> players = sg.add(new BoolSetting.Builder()
-        .name("players").description("Mark other players with a cross.").defaultValue(true).build());
-    private final Setting<Double> spawnerSize = sg.add(new DoubleSetting.Builder()
-        .name("spawner-cross-size").defaultValue(0.7).min(0.2).sliderMax(3).visible(spawners::get).build());
-    private final Setting<Double> playerSize = sg.add(new DoubleSetting.Builder()
-        .name("player-cross-size").defaultValue(0.6).min(0.2).sliderMax(3).visible(players::get).build());
-    private final Setting<SettingColor> spawnerColor = sg.add(new ColorSetting.Builder()
-        .name("spawner-color").defaultValue(new SettingColor(255, 0, 0, 255)).visible(spawners::get).build());
-    private final Setting<SettingColor> playerColor = sg.add(new ColorSetting.Builder()
-        .name("player-color").defaultValue(new SettingColor(255, 255, 255, 255)).visible(players::get).build());
+    private final Setting<Boolean> notify = sg.add(new BoolSetting.Builder()
+        .name("notification").description("Top-right toast when a new spawner is found.").defaultValue(true).build());
+    private final Setting<String> message = sg.add(new StringSetting.Builder()
+        .name("message").description("Toast title.").defaultValue("ECHO DEBUG SPAWNER").build());
+    private final Setting<Boolean> chat = sg.add(new BoolSetting.Builder()
+        .name("chat-message").description("Also print the coordinates in chat.").defaultValue(false).build());
+    private final Setting<Double> size = sg.add(new DoubleSetting.Builder()
+        .name("cross-size").description("How big the cross is.")
+        .defaultValue(1.5).min(0.3).max(6).sliderMax(5).build());
+    private final Setting<Double> height = sg.add(new DoubleSetting.Builder()
+        .name("height-above-spawner").description("How high above the spawner the cross floats.")
+        .defaultValue(15).min(0).max(200).sliderMax(60).build());
+    private final Setting<Boolean> stem = sg.add(new BoolSetting.Builder()
+        .name("line-to-spawner").description("Thin line from the spawner up to the cross.").defaultValue(true).build());
+    private final Setting<SettingColor> color = sg.add(new ColorSetting.Builder()
+        .name("color").defaultValue(new SettingColor(255, 220, 0, 255)).build());
     private final Setting<Integer> scanInterval = sg.add(new IntSetting.Builder()
         .name("scan-interval-ticks").defaultValue(10).min(5).sliderMax(100).build());
 
+    private final Setting<Boolean> players = sgPlayers.add(new BoolSetting.Builder()
+        .name("mark-players").description("Also put a small cross over other players.").defaultValue(false).build());
+    private final Setting<Double> playerSize = sgPlayers.add(new DoubleSetting.Builder()
+        .name("player-cross-size").defaultValue(0.5).min(0.2).max(3).sliderMax(2).visible(players::get).build());
+    private final Setting<SettingColor> playerColor = sgPlayers.add(new ColorSetting.Builder()
+        .name("player-color").defaultValue(new SettingColor(255, 220, 0, 255)).visible(players::get).build());
+
     private final List<BlockPos> spawnerList = new ArrayList<>();
+    private final Set<BlockPos> notified = new HashSet<>();
     private int timer;
 
     public CrossEsp() {
-        super(AddonTemplate.CATEGORY, "donut-cross-esp", "Marks spawners and players with a cross.");
+        super(AddonTemplate.CATEGORY, "donut-cross-esp", "Floating yellow cross over spawners + notification.");
     }
 
     @Override
-    public void onActivate() { timer = scanInterval.get(); }
+    public void onActivate() { notified.clear(); timer = scanInterval.get(); }
 
     @Override
     public void onDeactivate() { spawnerList.clear(); }
@@ -59,7 +69,6 @@ public class CrossEsp extends Module {
 
     private void onTickImpl(TickEvent.Post event) {
         if (mc.world == null || mc.player == null) return;
-        if (!spawners.get()) { spawnerList.clear(); return; }
         if (++timer < scanInterval.get()) return;
         timer = 0;
 
@@ -77,6 +86,17 @@ public class CrossEsp extends Module {
         }
         spawnerList.clear();
         spawnerList.addAll(found);
+
+        for (BlockPos p : found) {
+            if (!notified.add(p)) continue;
+            if (notify.get()) {
+                SystemToast.add(mc.getToastManager(), SystemToast.Type.PERIODIC_NOTIFICATION,
+                    Text.literal(message.get()),
+                    Text.literal(p.getX() + ", " + p.getY() + ", " + p.getZ()));
+            }
+            if (chat.get()) info("Spawner at %d %d %d", p.getX(), p.getY(), p.getZ());
+            break; // one toast per scan so they never stack
+        }
     }
 
     @EventHandler
@@ -87,27 +107,33 @@ public class CrossEsp extends Module {
     private void onRenderImpl(Render3DEvent event) {
         if (mc.player == null || mc.world == null) return;
 
-        if (spawners.get()) {
-            for (BlockPos p : spawnerList) {
-                cross(event, p.getX() + 0.5, p.getY() + 0.5, p.getZ() + 0.5, spawnerSize.get(), spawnerColor.get());
+        for (BlockPos p : spawnerList) {
+            double cx = p.getX() + 0.5, cz = p.getZ() + 0.5;
+            double cy = p.getY() + 1 + height.get() + size.get();
+            cross(event, cx, cy, cz, size.get(), color.get());
+            if (stem.get()) {
+                event.renderer.line(cx, p.getY() + 1, cz, cx, cy - size.get(), cz, color.get());
             }
         }
+
         if (players.get()) {
             for (PlayerEntity pl : mc.world.getPlayers()) {
                 if (pl == mc.player) continue;
-                cross(event, pl.getX(), pl.getY() + pl.getHeight() / 2.0, pl.getZ(), playerSize.get(), playerColor.get());
+                double s = playerSize.get();
+                cross(event, pl.getX(), pl.getY() + pl.getHeight() + 0.6 + s, pl.getZ(), s, playerColor.get());
             }
         }
     }
 
-    /** Draws an X centred on (x, y, z) in a plane that faces the player. */
-    private void cross(Render3DEvent event, double x, double y, double z, double size, SettingColor c) {
-        double dx = mc.player.getX() - x, dz = mc.player.getZ() - z;
-        double len = Math.sqrt(dx * dx + dz * dz);
-        double rx, rz;
-        if (len < 1.0E-4) { rx = 1; rz = 0; } else { rx = -dz / len; rz = dx / len; }
-        rx *= size; rz *= size;
-        event.renderer.line(x - rx, y - size, z - rz, x + rx, y + size, z + rz, c);
-        event.renderer.line(x - rx, y + size, z - rz, x + rx, y - size, z + rz, c);
+    private void cross(Render3DEvent event, double x, double y, double z, double s, SettingColor c) {
+        double hw = Math.max(0.06, s * 0.07);
+        SettingColor fill = new SettingColor(c.r, c.g, c.b, 140);
+        double barY = y + s;
+        event.renderer.box(x - hw, y - s, z - hw, x + hw, y + 2 * s, z + hw, fill, c, ShapeMode.Both, 0);
+        event.renderer.box(x - s, barY - hw, z - hw, x + s, barY + hw, z + hw, fill, c, ShapeMode.Both, 0);
+        event.renderer.box(x - hw, barY - hw, z - s, x + hw, barY + hw, z + s, fill, c, ShapeMode.Both, 0);
     }
+
+    @Override
+    public String getInfoString() { return String.valueOf(spawnerList.size()); }
 }
